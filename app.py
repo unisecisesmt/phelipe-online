@@ -1,4 +1,4 @@
-# app.py - Phelipe Online - Versão Completa (sem OCR)
+# app.py - Phelipe Online - Versão Revisada e Funcional
 import streamlit as st
 import google.generativeai as genai
 import os
@@ -16,6 +16,8 @@ if 'csv' not in st.session_state:
     st.session_state.csv = None
 if 'csv_filename' not in st.session_state:
     st.session_state.csv_filename = ""
+if 'classificacao_final' not in st.session_state:
+    st.session_state.classificacao_final = "Não classificado"
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Phelipe Online - TCE-MT", page_icon="🔍", layout="wide")
@@ -196,7 +198,7 @@ if st.button("🚀 Analisar com Phelipe") and uploaded_files and num_decisao and
                     "data_implementacao_gestor": data_implementacao_gestor,
                     "relatorio_tecnico": data.get("relatorio_tecnico", "Não disponível"),
                     "analise_contextual": data.get("analise_contextual", "Não disponível"),
-                    "classificacao_final": data.get("classificacao_final", "Não classificado"),
+                    "classificacao_final": st.session_state.classificacao_final,
                     "insights_prevencao": ", ".join(data.get("insights_capacitacao", {}).get("sugestoes_prevencao", ["Nenhuma"])),
                     "indicio_dano": "Sim" if data.get("indicios_dano_erario", {}).get("consta_dano") else "Não",
                     "detalhe_dano": data.get("indicios_dano_erario", {}).get("descricao", "Não consta"),
@@ -262,22 +264,24 @@ if st.session_state.analise_feita:
         analise_acao = response.text.strip()
         st.write(analise_acao)
 
-        # Atualiza a classificação final
+        # Atualiza a classificação final no session_state
         if "✅ Compatível" in analise_acao:
-            st.session_state.data["classificacao_final"] = "✅ Compatível"
+            st.session_state.classificacao_final = "✅ Compatível"
         elif "⚠️ Parcialmente" in analise_acao:
-            st.session_state.data["classificacao_final"] = "⚠️ Parcialmente compatível"
+            st.session_state.classificacao_final = "⚠️ Parcialmente compatível"
         elif "❌ Incompatível" in analise_acao:
-            st.session_state.data["classificacao_final"] = "❌ Incompatível"
+            st.session_state.classificacao_final = "❌ Incompatível"
         elif "🚫 Não Aplicável" in analise_acao:
-            st.session_state.data["classificacao_final"] = "🚫 Não Aplicável"
+            st.session_state.classificacao_final = "🚫 Não Aplicável"
+        else:
+            st.session_state.classificacao_final = "Não classificado"
 
     except Exception as e:
         st.error(f"Erro ao gerar análise da ação: {e}")
 
     # --- 📊 CLASSIFICAÇÃO FINAL ---
     st.subheader("📊 Classificação Final")
-    st.markdown(f"**{data.get('classificacao_final', 'Não classificado')}**")
+    st.markdown(f"**{st.session_state.classificacao_final}**")
 
     # --- 🧠 INSIGHTS PARA CAPACITAÇÃO ---
     st.subheader("🎓 Insights para Capacitação")
@@ -325,18 +329,22 @@ if pergunta:
         try:
             contexto = ""
             try:
-                df = pd.read_csv("memoria/historico.csv")
-                candidatos = df[
-                    df['num_decisao'].str.contains(pergunta, case=False, na=True) |
-                    df['recomendacao'].str.contains(pergunta, case=False, na=True) |
-                    df['gestor'].str.contains(pergunta, case=False, na=True)
-                ]
-                if not candidatos.empty:
-                    contexto += "📌 Casos semelhantes encontrados:\n"
-                    for _, row in candidatos.iterrows():
-                        contexto += f"- {row['num_decisao']}: {row['recomendacao'][:100]}...\n"
+                # Verifica se o arquivo existe
+                if os.path.exists("memoria/historico.csv"):
+                    df = pd.read_csv("memoria/historico.csv")
+                    candidatos = df[
+                        df['num_decisao'].str.contains(pergunta, case=False, na=True) |
+                        df['recomendacao'].str.contains(pergunta, case=False, na=True) |
+                        df['gestor'].str.contains(pergunta, case=False, na=True)
+                    ]
+                    if not candidatos.empty:
+                        contexto += "📌 Casos semelhantes encontrados:\n"
+                        for _, row in candidatos.iterrows():
+                            contexto += f"- {row['num_decisao']}: {row['recomendacao'][:100]}...\n"
+                else:
+                    contexto += "⚠️ Histórico vazio ou não encontrado.\n"
             except Exception as e:
-                contexto += "⚠️ Nenhum caso encontrado no histórico.\n"
+                contexto += "⚠️ Erro ao carregar histórico.\n"
 
             if contexto.strip():
                 prompt_busca = f"""
